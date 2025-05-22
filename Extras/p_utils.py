@@ -9,6 +9,7 @@ import gc
 import torch
 import cv2
 
+
 def process_image(image):
     gray_image = image.convert("L")  # Convert to grayscale
     contrast = ImageEnhance.Contrast(gray_image)
@@ -136,6 +137,10 @@ def cal_dist(result, weights=(1.0, 1.0)):
     # calculate the differences between each midpoint
     diff = coords[:, np.newaxis, :] - coords[np.newaxis, :, :]
 
+    # calculate avg distances in axis:
+    avg_x_dist = np.mean(np.abs(diff[:, :, 0]))
+    avg_y_dist = np.mean(np.abs(diff[:, :, 1]))
+
     # calculate unit vectors
     unit_vectors = diff / (np.linalg.norm(diff, axis=-1, keepdims=True) + 1e-8)
 
@@ -149,17 +154,61 @@ def cal_dist(result, weights=(1.0, 1.0)):
     x_scores = dist_matrix + weights[0] * x_alignment
     y_scores = dist_matrix + weights[1] * y_alignment
 
-    return x_scores, y_scores
+    return x_scores, y_scores, dist_matrix, (avg_x_dist, avg_y_dist)
 
 
-def get_top_scores(result, index, scores, k=5):
+def get_top_score(
+        index, 
+        scores, 
+        # k=5
+    ):
     sorted_indices = np.argsort(scores[index])
     sorted_indices_no_self = sorted_indices[sorted_indices != index].tolist()
-    top_predictions = []
+    # top_predictions = []
     
-    for n, idx in enumerate(sorted_indices_no_self):
-        top_predictions.append((idx, result[idx]))
-        if n == k:
-            break
+    # for n, idx in enumerate(sorted_indices_no_self):
+    #     top_predictions.append(idx)
+    #     if n == k:
+    #         break
 
-    return top_predictions
+    # return top_predictions
+    return sorted_indices_no_self[0]
+
+
+def directional_distance_sorting(
+            result, 
+            weights=(1.0, 1.0), 
+            # k=5
+        ):
+    sorted_result = []
+
+    first_element = max(sorted(result, key=lambda x: x[0][1][1])[:10], key=lambda x: x[0][1][0])
+    sorted_result.append(first_element)
+
+    index = result.index(first_element)
+
+    x_scores, y_scores, dist_mat, avg_dists = cal_dist(result, weights)
+
+    next_index = None
+
+    for _ in range(len(result)-1):
+        top_score_x = get_top_score(index, x_scores)
+        fpx_dist = dist_mat[index][top_score_x]
+
+        top_score_y = get_top_score(index, y_scores)
+        fpy_dist = dist_mat[index][top_score_y]
+
+        if fpx_dist < avg_dists[0]:
+            next_index = top_score_x
+
+        else:
+            if fpy_dist < avg_dists[1]:
+                next_index = top_score_y
+            else:
+                next_index = top_score_x
+
+        index = next_index
+
+        sorted_result.append(result[index])
+
+    return sorted_result
