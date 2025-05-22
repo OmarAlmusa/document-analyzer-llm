@@ -107,10 +107,59 @@ def draw_center_dots(result, image):
     return image_copy
 
 
+def process_coordinates(coordinates, weights=(1.0, 1.0)):
+    
+    # calculate the differences between each midpoint
+    diff = coordinates[:, np.newaxis, :] - coordinates[np.newaxis, :, :]
+
+    # calculate avg distances in axis:
+    avg_x_dist = np.mean(np.abs(diff[:, :, 0]))
+    avg_y_dist = np.mean(np.abs(diff[:, :, 1]))
+    
+    # calculate unit vectors
+    unit_vectors = diff / (np.linalg.norm(diff, axis=-1, keepdims=True) + 1e-8)
+
+    # normalized distances
+    dist_matrix = np.linalg.norm(diff, axis=-1)
+
+    # calculate the axis alignment scores
+    x_alignment = unit_vectors[:, :, 0]
+    y_alignment = unit_vectors[:, :, 1]
+
+    x_scores = dist_matrix + weights[0] * x_alignment
+    y_scores = dist_matrix + weights[1] * y_alignment
+
+    x_next_idx = np.argsort(x_scores[0])[0]
+    y_next_idx = np.argsort(y_scores[0])[0]
+
+    fpx_dist = dist_matrix[0][x_next_idx]
+    fpy_dist = dist_matrix[0][y_next_idx]
+
+    if fpx_dist < avg_x_dist:
+            next_index = x_next_idx
+    else:
+        if fpy_dist < avg_y_dist:
+            next_index = y_next_idx
+        else:
+            next_index = x_next_idx
+
+    next_coord = coordinates[next_index]
+
+    coordinates_modified = np.delete(coordinates, [0, next_index], axis=0)
+
+    coordinates_modified = np.insert(coordinates_modified, 0, next_coord ,axis=0)
+
+    return coordinates_modified
+    
+
+
 def cal_dist(result, weights=(1.0, 1.0)):
     '''
         result: the output result of EasyOCR,
         weights: the weight of each axis alignment, (x, y)
+
+        for Arabic (Right to Left): weights=(-1.0, 1.0)
+        for English (Left to Right): weights=(1.0, 1.0)
 
         reminder of how images are plotted, based on that you define your weights:
                                   ^
@@ -180,18 +229,20 @@ def directional_distance_sorting(
             weights=(1.0, 1.0), 
             # k=5
         ):
+    
+    result_copy = result.copy()
     sorted_result = []
 
-    first_element = max(sorted(result, key=lambda x: x[0][1][1])[:10], key=lambda x: x[0][1][0])
+    first_element = max(sorted(result_copy, key=lambda x: x[0][1][1])[:10], key=lambda x: x[0][1][0])
+
     sorted_result.append(first_element)
 
-    index = result.index(first_element)
+    index = result_copy.index(first_element)
 
-    x_scores, y_scores, dist_mat, avg_dists = cal_dist(result, weights)
+    while len(result_copy) != 0:
 
-    next_index = None
+        x_scores, y_scores, dist_mat, avg_dists = cal_dist(result_copy, weights)
 
-    for _ in range(len(result)-1):
         top_score_x = get_top_score(index, x_scores)
         fpx_dist = dist_mat[index][top_score_x]
 
@@ -207,8 +258,11 @@ def directional_distance_sorting(
             else:
                 next_index = top_score_x
 
-        index = next_index
+        sorted_result.append(result_copy[next_index])
 
-        sorted_result.append(result[index])
+        result_copy.pop(index)
+
+        index = result_copy.index(result_copy[next_index])
+
 
     return sorted_result
