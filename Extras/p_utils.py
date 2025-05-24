@@ -129,27 +129,43 @@ def process_coordinates(coordinates, weights=(1.0, 1.0)):
     x_scores = dist_matrix + weights[0] * x_alignment
     y_scores = dist_matrix + weights[1] * y_alignment
 
-    x_next_idx = np.argsort(x_scores[0])[0]
-    y_next_idx = np.argsort(y_scores[0])[0]
+    # sorted_indices = np.argsort(scores[index])
+    # sorted_indices_no_self = sorted_indices[sorted_indices != index].tolist()
 
-    fpx_dist = dist_matrix[0][x_next_idx]
-    fpy_dist = dist_matrix[0][y_next_idx]
+    x_next_idx = np.argsort(x_scores[0])
+    x_next_idx_no_self = x_next_idx[x_next_idx != 0].tolist()[0]
+
+    y_next_idx = np.argsort(y_scores[0])
+    y_next_idx_no_self = y_next_idx[y_next_idx != 0].tolist()[0]
+
+    fpx_dist = dist_matrix[0][x_next_idx_no_self]
+    fpy_dist = dist_matrix[0][y_next_idx_no_self]
 
     if fpx_dist < avg_x_dist:
-            next_index = x_next_idx
+            next_index = x_next_idx_no_self
     else:
         if fpy_dist < avg_y_dist:
-            next_index = y_next_idx
+            next_index = y_next_idx_no_self
         else:
-            next_index = x_next_idx
+            next_index = x_next_idx_no_self
 
     next_coord = coordinates[next_index]
 
-    coordinates_modified = np.delete(coordinates, [0, next_index], axis=0)
+    deleted_coords = np.delete(coordinates, [0, next_index], axis=0)
 
-    coordinates_modified = np.insert(coordinates_modified, 0, next_coord ,axis=0)
+    inserted_coords = np.insert(deleted_coords, [0], next_coord ,axis=0)
 
-    return coordinates_modified
+    return inserted_coords, next_coord
+
+
+def get_origin_point(coordinates):
+    origin_point = np.array([[coordinates.max(axis=0)[0], coordinates.min(axis=0)[1]]])
+    return origin_point
+
+
+def find_matched_result(results, target):
+    matched_result = next((result for result in results if np.allclose(np.array(result[0][1]), target)), None)
+    return matched_result
     
 
 
